@@ -20,12 +20,13 @@
 struct tcb {
     struct list_head list;
     ucontext_t *context;
-    enum uthread_state state;
-    int tid;
+    enum uthread_state state;	//READY, RUNNING, TERMINATED
+    int tid;	//스레드 식별번호
 
     int lifetime; // This for preemptive scheduling
     int priority; // This for priority scheduling
 };
+
 
 /***************************************************************************************
  * LIST_HEAD(tcbs);
@@ -120,6 +121,8 @@ struct tcb *sjf_scheduling(struct tcb *next) {
  **************************************************************************************/
 void uthread_init(enum uthread_sched_policy policy) {
     /* TODO: You have to implement this function. */
+    
+    
 
     /* DO NOT MODIFY THESE TWO LINES */
     __create_run_timer();
@@ -135,10 +138,21 @@ void uthread_init(enum uthread_sched_policy policy) {
  *    Create user level thread. This function returns a tid.
  *
  **************************************************************************************/
+ 
+ // 스레드 생성
 int uthread_create(void* stub(void *), void* args) {
 
     /* TODO: You have to implement this function. */
-
+    struct tcb *new = malloc(sizeof(struct tcb));
+    INIT_LIST_HEAD(&new->list);
+    new -> state = 0; // READY
+    new -> tid = n_tcbs++;
+    new -> lifetime = args[1];
+    new -> priority = args[2];
+    
+    list_add(&new->list,&tcbs);
+    
+    return new->tid;
 }
 
 /***************************************************************************************
@@ -149,9 +163,20 @@ int uthread_create(void* stub(void *), void* args) {
  *    Wait until thread context block is terminated.
  *
  **************************************************************************************/
+ //스레드 정리 - 자원회수
 void uthread_join(int tid) {
 
     /* TODO: You have to implement this function. */
+    struct tcb *temp;
+    list_for_each_entry_reverse(temp, &tcbs,tid)
+    {
+    	if(temp->tid == tid)
+    	{	
+    		break;
+    	}
+    	
+    }
+    
 
 }
 
@@ -166,6 +191,7 @@ void uthread_join(int tid) {
 void __exit() {
 
     /* TODO: You have to implement this function. */
+    
 
 }
 
