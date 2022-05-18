@@ -35,11 +35,11 @@ struct tcb {
  *    Initialize list head of thread control block.
  *
  **************************************************************************************/
-LIST_HEAD(tcbs);
+LIST_HEAD(tcbs);	//threads on the system
 
-int n_tcbs = 0;
+int n_tcbs = 0;	//tcb count
 
-struct ucontext_t *t_context;
+struct ucontext_t *t_context;	//current running
 
 /***************************************************************************************
  * next_tcb()
@@ -94,6 +94,7 @@ struct tcb *rr_scheduling(struct tcb *next) {
 struct tcb *prio_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
+    
 
 }
 
@@ -122,7 +123,18 @@ struct tcb *sjf_scheduling(struct tcb *next) {
 void uthread_init(enum uthread_sched_policy policy) {
     /* TODO: You have to implement this function. */
     
-    
+    if(policy == 0) //FIFO
+    {
+    }
+    else if(policy == 1) //RR
+    {
+    }
+    else if(policy ==2) //PRIO
+    {
+    }
+    else if(policy == 3) //SJF
+    {
+    }
 
     /* DO NOT MODIFY THESE TWO LINES */
     __create_run_timer();
@@ -143,8 +155,17 @@ void uthread_init(enum uthread_sched_policy policy) {
 int uthread_create(void* stub(void *), void* args) {
 
     /* TODO: You have to implement this function. */
+    //args[0]?,stub -> func, context
     struct tcb *new = malloc(sizeof(struct tcb));
     INIT_LIST_HEAD(&new->list);
+    
+    getcontext(new->context);
+    new->context->uc_link = 0;
+    new->context->uc_stack->ss_sp=malloc(args[1]);
+    new->context->uc_stack->ss_size = args[1];
+    new->context->uc_stack->ss_flag=0;
+    makecontext(new->context, stub, 0);
+    
     new -> state = 0; // READY
     new -> tid = n_tcbs++;
     new -> lifetime = args[1];
@@ -152,7 +173,9 @@ int uthread_create(void* stub(void *), void* args) {
     
     list_add(&new->list,&tcbs);
     
+    
     return new->tid;
+    
 }
 
 /***************************************************************************************
@@ -167,15 +190,6 @@ int uthread_create(void* stub(void *), void* args) {
 void uthread_join(int tid) {
 
     /* TODO: You have to implement this function. */
-    struct tcb *temp;
-    list_for_each_entry_reverse(temp, &tcbs,tid)
-    {
-    	if(temp->tid == tid)
-    	{	
-    		break;
-    	}
-    	
-    }
     
 
 }
