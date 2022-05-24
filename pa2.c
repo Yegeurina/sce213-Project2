@@ -38,6 +38,7 @@ void *__preemptive_worker(void* args) {
  *
  ******************************************************************/
 void *__non_preemptive_worker(void* args) {
+    //printf("non premmptive worker is done\n");
     for (int i = 0; i < 10000000; i++);
 }
 
