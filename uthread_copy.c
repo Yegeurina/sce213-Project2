@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -20,8 +21,8 @@
 struct tcb {
     struct list_head list;
     ucontext_t *context;
-    enum uthread_state state;
-    int tid;
+    enum uthread_state state;	//READY, RUNNING, TERMINATED
+    int tid;	//스레드 식별번호
 
     int lifetime; // This for preemptive scheduling
     int priority; // This for priority scheduling
@@ -34,12 +35,12 @@ struct tcb {
  *    Initialize list head of thread control block.
  *
  **************************************************************************************/
-LIST_HEAD(tcbs);
+LIST_HEAD(tcbs); //threads on the system
 
-int n_tcbs = 0;
+int n_tcbs = 0; //tcb count
 
 struct ucontext_t *t_context;
-int g_policy;
+
 
 /***************************************************************************************
  * next_tcb()
@@ -51,51 +52,38 @@ int g_policy;
  **************************************************************************************/
 void next_tcb() {
 
-    printf("next_tcb\n");
-
+    printf("next_tcb()\n");
     /* TODO: You have to implement this function. */
-    
-    printf("g_policy : %d\n",g_policy);
-    
     struct tcb *prev = malloc(sizeof(struct tcb));
-    struct tcb *next = malloc(sizeof(struct tcb));
+    prev -> context = malloc(sizeof(struct ucontext_t));
     
     list_for_each_entry_reverse(prev, &tcbs,list)
     {
-    	if(prev -> state == 1) //RUNNING
+    	if(prev->state == 1) // RUNNING
+    	{
+    		prev -> state = 0; //READY
     		break;
+    	}
     }
     
-    switch (g_policy)
+    struct tcb *next = malloc(sizeof(struct tcb));
+    next -> context = malloc(sizeof(struct ucontext_t));
+    
+    list_for_each_entry_reverse(next, &tcbs,list)
     {
-    	case 0 : //FIFO
-    		next = fifo_scheduling(prev);
-    		prev -> lifetime = 0;
+    	if(next->state ==2) // TERMINATED
+    	{
+    		next -> state = 1; //RUNNING
     		break;
-    	case 1 : //RR
-    		next = rr_scheduling(prev);
-    		break;
-    	case 2 : //PRIO
-    		next = prio_scheduling(prev);
-    		break;
-    	case 3 : //SJF
-    		next = sjf_scheduling(prev);
-    		break;
+    	}
     }
-    
-    if (prev->lifetime == 0){
-    	prev -> state = 2; //terminated
-    	n_tcbs--;
-    }
-    else
-    	prev -> state = 0; // ready
-    	
-    next -> state = 1; // runnig
     
     fprintf(stderr, "SWAP %d -> %d\n", prev->tid, next->tid);
     swapcontext(prev->context, next->context);
-
+    
+    
 }
+
 
 /***************************************************************************************
  * struct tcb *fifo_scheduling(struct tcb *next)
@@ -105,20 +93,24 @@ void next_tcb() {
  *    This function returns a tcb pointer using First-In-First-Out policy
  *
  **************************************************************************************/
-struct tcb *fifo_scheduling(struct tcb *next) {
-
-    printf("fifo_scheduling\n");
-
+struct tcb  *fifo_scheduling(struct tcb *next) {
     /* TODO: You have to implement this function. */
-    struct tcb *temp = malloc(sizeof(struct tcb));
-    list_for_each_entry_reverse(temp, &tcbs,list)
+    
+    printf("FIFO Scheduling\n");
+    setcontext(next->context);
+    struct tcb *temp =  malloc(sizeof(struct tcb));
+    list_for_each_entry_reverse(temp,&tcbs,list)
     {
-    	if(temp->state == 0)
+    	if(temp -> state == 0) //READY
     	{
+    		printf("Scheduling tid : %d \n",temp->tid);
+    		temp->state = 2; // TERMINATED
     		return temp;
     	}
-    } 
+    }
+
 }
+
 
 /***************************************************************************************
  * struct tcb *rr_scheduling(struct tcb *next)
@@ -170,31 +162,45 @@ struct tcb *sjf_scheduling(struct tcb *next) {
  *
  **************************************************************************************/
 void uthread_init(enum uthread_sched_policy policy) {
-    
-    printf("uthread_init\n");
-    
     /* TODO: You have to implement this function. */
-    g_policy = policy; // store policy to golbal policy
-   
-    struct tcb * main = malloc(sizeof(struct tcb));
-    main -> context = malloc(sizeof(struct ucontext_t));
     
-    
+    t_context = malloc(sizeof(struct ucontext_t));
+    getcontext(t_context);
+    t_context -> uc_link = 0;
+    t_context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
+    t_context -> uc_stack.ss_size = MAX_STACK_SIZE;
+    t_context -> uc_stack.ss_flags = 0;
+
+    struct tcb *main = malloc(sizeof(struct tcb));
     INIT_LIST_HEAD(&main -> list);
-    main -> state = 1; // running
+    main -> state = 2; // TERMINATED
     main -> tid = MAIN_THREAD_TID;
     n_tcbs++;
     main -> lifetime = MAIN_THREAD_LIFETIME;
     main -> priority = MAIN_THREAD_PRIORITY;
+    main -> context = malloc(sizeof(struct ucontext_t));
+    main -> context = t_context;
+    main -> context -> uc_link = t_context;
+    //getcontext(main->context);
+        
+    switch (policy)
+    {
+    	case 0 : //FIFO
+    		makecontext(t_context, (void *)fifo_scheduling,1,main);
+    		break;	
+    	case 1 : //RR
+    		makecontext(t_context, (void *)rr_scheduling,1,main);
+    		break;
+    	case 2 : //PRIO
+    		makecontext(t_context, (void *)prio_scheduling,1,main);
+    		break;
+    	case 3 : //SJF
+    		makecontext(t_context, (void *)sjf_scheduling,1,main);
+    		break;
+    }
     
-    getcontext(main->context);
-    
-    main -> context -> uc_link = 0;
-    main -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
-    main -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
-    main -> context -> uc_stack.ss_flags = 0;
-    
-    list_add_tail(&main->list, &tcbs);
+    swapcontext(t_context, main->context);
+    //list_add(&main->list, &tcbs);
     
     /* DO NOT MODIFY THESE TWO LINES */
     __create_run_timer();
@@ -211,15 +217,10 @@ void uthread_init(enum uthread_sched_policy policy) {
  *
  **************************************************************************************/
 int uthread_create(void* stub(void *), void* args) {
-    
-    printf("uthread_create\n");
-    
+
     /* TODO: You have to implement this function. */
-    struct tcb *current = malloc(sizeof(struct tcb));
-    current = list_first_entry(&tcbs, struct tcb, list);
     
     struct tcb *new = malloc(sizeof(struct tcb));
-    new -> context = malloc(sizeof(struct ucontext_t));
     
     INIT_LIST_HEAD(&new -> list);
     
@@ -229,17 +230,14 @@ int uthread_create(void* stub(void *), void* args) {
     new -> lifetime = *(int *)(args+1);
     new -> priority = *(int *)(args+2);
     
-    getcontext(new->context);
-    
-    new -> context -> uc_link = current -> context;
+    new -> context = malloc(sizeof(struct ucontext_t));
+    new -> context -> uc_link = t_context;
     new -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     new -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
     
     makecontext(new -> context, (void *) stub, 0);
     
-    list_add_tail(&new->list, &tcbs);
-    
-    printf("n_tcbs : %d\n",n_tcbs);
+    list_add(&new->list, &tcbs);
     
     return new->tid; // tid return
 }
@@ -255,9 +253,29 @@ int uthread_create(void* stub(void *), void* args) {
 void uthread_join(int tid) {
 
     /* TODO: You have to implement this function. */
-   
     
+    struct tcb *prev = malloc(sizeof(struct tcb));
+    prev -> context = malloc(sizeof(struct ucontext_t));
     
+    list_for_each_entry_reverse(prev, &tcbs,list)
+    {
+    	if(prev -> tid == tid ) 
+    	{
+    		prev->state = 0; // READY
+    		
+    		fprintf(stderr, "JOIN %d\n", prev->tid);
+    		setcontext(t_context);
+    		
+    		list_del(&prev->list);
+		free(prev->context);
+		free(prev);
+		n_tcbs--;
+		
+		break;
+    	}
+    }
+ 
+
 }
 
 /***************************************************************************************
@@ -271,6 +289,18 @@ void uthread_join(int tid) {
 void __exit() {
 
     /* TODO: You have to implement this function. */
+    struct tcb *temp = malloc(sizeof(struct tcb));
+    list_for_each_entry_reverse(temp, &tcbs,list)
+    {
+    	if(temp->state == 2)
+    	{
+    		list_del(&temp->list);
+    		free(temp->context);
+    		free(temp);
+    		n_tcbs--;
+    		temp =  list_first_entry(&tcbs, struct tcb, list);
+    	}
+    }
 
 }
 
@@ -285,7 +315,28 @@ void __exit() {
 void __initialize_exit_context() {
 
     /* TODO: You have to implement this function. */
-
+    struct tcb *next = malloc(sizeof(struct tcb));
+    struct tcb *prev = malloc(sizeof(struct tcb));
+    list_for_each_entry_reverse(next, &tcbs,list)
+    {
+    	if(next -> tid == MAIN_THREAD_TID)
+    		break;
+    }
+    list_for_each_entry_reverse(prev, &tcbs,list)
+    {
+    	if (prev ->  state == 1) // Runnable
+    	{
+    		printf("RUNNABLE CHECK");
+    		prev -> state = 0; // Ready
+    		next -> state = 1; // Runnable
+    		break;
+    	}
+    }
+    if(prev->tid != next->tid)
+    {
+	     fprintf(stderr, "SWAP %d -> %d\n", prev->tid, next->tid);	// return main
+	     swapcontext(prev -> context, next -> context);
+    }
 }
 
 /***************************************************************************************
@@ -298,7 +349,6 @@ static struct itimerval time_quantum;
 static struct sigaction ticker;
 
 void __scheduler() {
-    printf("__scheduler()\n");
     if(n_tcbs > 1)
         next_tcb();
 }
