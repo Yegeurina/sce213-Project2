@@ -92,10 +92,8 @@ struct tcb *fifo_scheduling(struct tcb *next) {
     {
         if(temp->tid != next->tid && temp->state == 0)
         {
-            //fprintf(stderr,"temp tid : %d\n",temp->tid);
             temp->state = 2;
             n_tcbs--;
-            //fprintf(stderr, "n_tcbs : %d sche tid : %d state : %d\n",n_tcbs ,temp->tid,temp->state);
             return temp;
         }
     }
@@ -236,20 +234,30 @@ int uthread_create(void* stub(void *), void* args) {
  **************************************************************************************/
 void uthread_join(int tid) {
     struct tcb *join;
-    struct tcb *current;
-
+    struct tcb *temp;
+    //fprintf(stderr,"join : running tid = %d\n",running->tid);
     list_for_each_entry_reverse(join, &tcbs, list)
     {
         if(join -> tid == tid && join -> state == 0)
         {
             getcontext(running->context);
             swapcontext(join->context, running->context);
-            
-            //fprintf(stderr,"join tid : %d\n",tid);
-            //fprintf(stderr,"JOIN %d\n",join->tid);
+            break;
         }
     }
-    
+    if(n_tcbs == 1) 
+    {
+        //join_tid = running_tid
+        list_for_each_entry_reverse(temp, &tcbs, list)
+        {
+            if(temp->state == 2)
+            {
+                fprintf(stderr,"tid : %d\n",temp->tid);
+            }
+               
+        }
+        
+    }
     
     
 }
