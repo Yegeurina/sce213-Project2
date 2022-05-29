@@ -50,6 +50,7 @@ struct tcb *running;
  *
  **************************************************************************************/
 void next_tcb() {
+
     struct tcb *next = malloc(sizeof(struct tcb));
     struct tcb *current = running;
 
@@ -174,7 +175,7 @@ struct tcb *prio_scheduling(struct tcb *next) {
     {
         if(temp->tid == tid)
         {
-            temp->lifetime --;
+            temp->lifetime--;
             temp->state = 1; //running
             return temp;
         }
@@ -246,6 +247,8 @@ void uthread_init(enum uthread_sched_policy policy) {
     main -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     main -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
     
+    //setcontext(main->context);
+    
     list_add_tail(&main->list, &tcbs);
 
     running = main;
@@ -274,7 +277,6 @@ int uthread_create(void* stub(void *), void* args) {
     
     new -> state = 0 ; //READY
     new -> tid = *(int *)args;
-    
     new -> lifetime = *(int *)(args+sizeof(int));
     new -> priority = *(int *)(args+sizeof(int)*2);
     
@@ -283,13 +285,13 @@ int uthread_create(void* stub(void *), void* args) {
     new -> context -> uc_link = t_context;
     new -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     new -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
-    
+    n_tcbs++;
+
     makecontext(new -> context, (void *) stub, 0);
     
     
     list_add_tail(&new->list, &tcbs);
-    n_tcbs++;
-        
+    
     return new->tid; // tid return
 }
 
@@ -361,6 +363,7 @@ static struct itimerval time_quantum;
 static struct sigaction ticker;
 
 void __scheduler() {
+    printf("this is __scheduler()\n");
     if(n_tcbs > 1)
         next_tcb();
 }
