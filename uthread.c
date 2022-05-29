@@ -52,17 +52,24 @@ struct tcb *running;
 void next_tcb() {
     struct tcb *next = malloc(sizeof(struct tcb));
     struct tcb *current = running;
-    //fprintf(stderr,"current tid : %d\n",current -> tid);
-    getcontext(current->context);
+
     switch(g_policy)
     {
         case 0: // FIFO
             next = fifo_scheduling(running);
             break;
+        case 1: //RR 
+            next = rr_scheduling(running);
+            break;
+        case 3: // prio
+            next = prio_scheduling(running);
+            break;
+        case 4: // sjf
+            next = sjf_scheduling(running);
+            break;
     }
     running = next;
     fprintf(stderr, "SWAP %d -> %d\n",current->tid, running -> tid);
-    
     swapcontext(current->context, running->context);
     
 }
@@ -76,13 +83,13 @@ void next_tcb() {
  *
  **************************************************************************************/
 struct tcb *fifo_scheduling(struct tcb *next) {
-
     
     struct tcb *run = malloc(sizeof(struct tcb));
     list_for_each_entry_reverse(run, &tcbs, list)
     {
         if(run->tid==next->tid) 
         {
+            run->tid = 2; //terminated
             break;
         }
     }
@@ -92,8 +99,10 @@ struct tcb *fifo_scheduling(struct tcb *next) {
     {
         if(temp->tid != next->tid && temp->state == 0)
         {
-            temp->state = 2;
+            //fprintf(stderr,"temp tid : %d\n",temp->tid);
+            temp->state = 1;//running
             n_tcbs--;
+            //fprintf(stderr, "n_tcbs : %d sche tid : %d state : %d\n",n_tcbs ,temp->tid,temp->state);
             return temp;
         }
     }
@@ -111,6 +120,25 @@ struct tcb *fifo_scheduling(struct tcb *next) {
 struct tcb *rr_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
+    struct tcb *temp;
+    list_for_each_entry(temp,&tcbs,list)
+    {
+        if(temp->tid == next->tid)
+        {
+            if (temp->lifetime>0) temp->state=0; //ready
+            else temp->state=2; //terminated 
+            break;
+        }
+    }
+    list_for_each_entry(temp,&tcbs,list)
+    {
+        if(temp->tid > next->tid)
+        {
+            temp->lifetime--;
+            temp->state = 1;    //running
+            return  temp;
+        }
+    }
 
 }
 
@@ -126,6 +154,32 @@ struct tcb *prio_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
 
+    struct tcb *temp;
+    int max_prio = -1;
+    int tid = -2;
+    list_for_each_entry(temp, &tcbs, list)
+    {
+        if(temp->tid == next->tid)
+        {
+            if (temp->lifetime>0) temp->state=0; //ready
+            else temp->state=2; //running
+        }
+        if(temp->priority>max_prio && temp->state == 0)
+        {
+            max_prio = temp->priority;
+            tid = temp->tid;
+        }
+    }
+    list_for_each_entry(temp, &tcbs, list)
+    {
+        if(temp->tid == tid)
+        {
+            temp->lifetime --;
+            temp->state = 1; //running
+            return temp;
+        }
+    }
+
 }
 
 /***************************************************************************************
@@ -139,6 +193,29 @@ struct tcb *prio_scheduling(struct tcb *next) {
 struct tcb *sjf_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
+    struct tcb *temp;
+    int min_lifetime = -1;
+    int tid = -2;
+    list_for_each_entry(temp, &tcbs, list)
+    {
+        if(temp->tid == next->tid)
+        { 
+            temp->state=2;  //terminated
+        }
+        if(temp->lifetime<min_lifetime && temp->state==0)
+        {
+            min_lifetime = temp->lifetime;
+            tid = temp->tid;
+        }
+    }
+    list_for_each_entry(temp, &tcbs, list)
+    {
+        if(temp->tid == tid)
+        {
+            temp->state = 1;    //running
+            return temp;
+        }
+    }
 
 }
 
@@ -151,16 +228,12 @@ struct tcb *sjf_scheduling(struct tcb *next) {
  **************************************************************************************/
 void uthread_init(enum uthread_sched_policy policy) {
     
-    //printf("uthread_init\n");
-    
     /* TODO: You have to implement this function. */
     g_policy = policy; // store policy to golbal policy
    
     struct tcb * main = malloc(sizeof(struct tcb));
     main -> context = malloc(sizeof(struct ucontext_t));
     
-    
-    INIT_LIST_HEAD(&main -> list);
     main -> state = 1; // running
     main -> tid = MAIN_THREAD_TID;
     n_tcbs++;
@@ -170,13 +243,13 @@ void uthread_init(enum uthread_sched_policy policy) {
     getcontext(main->context);
     
     main -> context -> uc_link = 0;
-    main -> context -> uc_stack.ss_sp = malloc(sizeof(struct ucontext_t)+MAX_STACK_SIZE);
+    main -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     main -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
-    main -> context -> uc_stack.ss_flags = 0;
     
-    list_add(&main->list, &tcbs);
+    list_add_tail(&main->list, &tcbs);
 
     running = main;
+    t_context = running->context;
 
     /* DO NOT MODIFY THESE TWO LINES */
     __create_run_timer();
@@ -194,32 +267,28 @@ void uthread_init(enum uthread_sched_policy policy) {
  **************************************************************************************/
 int uthread_create(void* stub(void *), void* args) {
     
-    //printf("uthread_create\n");
-    
     /* TODO: You have to implement this function. */
-    struct tcb *current = malloc(sizeof(struct tcb));
-    current = list_first_entry(&tcbs, struct tcb, list);
     
     struct tcb *new = malloc(sizeof(struct tcb));
     new -> context = malloc(sizeof(struct ucontext_t));
     
-    INIT_LIST_HEAD(&new -> list);
-    
-    new -> state =0 ; //READY
+    new -> state = 0 ; //READY
     new -> tid = *(int *)args;
-    n_tcbs++;
-    new -> lifetime = *(int *)(args+1);
-    new -> priority = *(int *)(args+2);
+    
+    new -> lifetime = *(int *)(args+sizeof(int));
+    new -> priority = *(int *)(args+sizeof(int)*2);
     
     getcontext(new->context);
-    
-    new -> context -> uc_link = current -> context;
-    new -> context -> uc_stack.ss_sp = malloc(sizeof(current->context) + MAX_STACK_SIZE);
+
+    new -> context -> uc_link = t_context;
+    new -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     new -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
     
     makecontext(new -> context, (void *) stub, 0);
     
-    list_add(&new->list, &tcbs);
+    
+    list_add_tail(&new->list, &tcbs);
+    n_tcbs++;
         
     return new->tid; // tid return
 }
@@ -234,30 +303,23 @@ int uthread_create(void* stub(void *), void* args) {
  **************************************************************************************/
 void uthread_join(int tid) {
     struct tcb *join;
-    struct tcb *temp;
-    //fprintf(stderr,"join : running tid = %d\n",running->tid);
-    list_for_each_entry_reverse(join, &tcbs, list)
+    struct tcb *current;
+
+    list_for_each_entry(join, &tcbs, list)
     {
-        if(join -> tid == tid && join -> state == 0)
+        if(join -> tid == tid && join -> state == 2)
         {
-            getcontext(running->context);
-            swapcontext(join->context, running->context);
+            fprintf(stderr,"JOIN %d\n",join->tid);
+
+            list_del(&join->list);
+            free(join->context);
+            free(join);
+            n_tcbs--;
+
             break;
         }
     }
-    if(n_tcbs == 1) 
-    {
-        //join_tid = running_tid
-        list_for_each_entry_reverse(temp, &tcbs, list)
-        {
-            if(temp->state == 2)
-            {
-                fprintf(stderr,"tid : %d\n",temp->tid);
-            }
-               
-        }
-        
-    }
+    
     
     
 }
