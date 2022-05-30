@@ -25,7 +25,7 @@
  *
  ******************************************************************/
 void *__preemptive_worker(void* args) {
-    printf("premmptive worker is done\n");
+    //printf("premmptive worker is done\n");
     while(1);
 }
 
@@ -39,7 +39,7 @@ void *__preemptive_worker(void* args) {
  *
  ******************************************************************/
 void *__non_preemptive_worker(void* args) {
-    printf("non premmptive worker is done\n");
+    //printf("non premmptive worker is done\n");
     for (int i = 0; i < 10000000; i++);
 }
 
