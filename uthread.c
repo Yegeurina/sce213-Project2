@@ -53,7 +53,6 @@ void next_tcb() {
 
     struct tcb *next = malloc(sizeof(struct tcb));
     struct tcb *current = running;
-
     switch(g_policy)
     {
         case 0 :
@@ -72,7 +71,7 @@ void next_tcb() {
     running = next;
     fprintf(stderr,"SWAP %d -> %d\n",current->tid, running -> tid);
     if (swapcontext(current->context, running->context)==-1)
-        printf("swapcontext() error\n");
+        printf("cur : %d run : %d swapcontext() error\n",current->tid,running->tid);
     sigprocmask(SIG_BLOCK,&running->context->uc_sigmask,NULL);
        
 }
@@ -133,14 +132,15 @@ struct tcb *fifo_scheduling(struct tcb *next) {
 struct tcb *rr_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
-    struct tcb *temp;
-    list_for_each_entry(temp,&tcbs,list)
+    //printf("\nnext tid : %d lifetime : %d state : %d\n",next->tid,next->lifetime, next->state);
+    struct tcb *run = malloc(sizeof(struct tcb));
+    list_for_each_entry(run, &tcbs, list)
     {
-        if(temp->tid == next->tid)
+        //printf("run tid : %d lifetime : %d state : %d\n",run->tid,run->lifetime,run->state);
+        if(run->tid == next->tid)
         {
-            if (temp->lifetime>0) temp->state=0; //ready
-            else temp->state=2; //terminated 
-            break;
+            if (run->lifetime>0) run->state=0; //ready
+            else run->state=2; //running
         }
     }
 
@@ -154,16 +154,20 @@ struct tcb *rr_scheduling(struct tcb *next) {
         return main;
     }
 
-    list_for_each_entry(temp,&tcbs,list)
+    struct tcb *temp = malloc(sizeof(struct tcb));
+    list_for_each_entry(temp, &tcbs, list)
     {
-        if(temp->tid > next->tid)
+        //printf("temp tid : %d lifetime : %d state : %d\n",temp->tid,temp->lifetime,temp->state);
+        if(temp->state == 0 && temp->tid > next->tid && temp->lifetime>0)
         {
             temp->lifetime--;
-            temp->state = 1;    //running
-            return  temp;
+            temp->state = 1;//running
+            return temp;
         }
     }
-
+    struct tcb *main = list_first_entry(&tcbs, struct tcb, list);
+    main -> state =1;
+    return main;
 }
 
 /***************************************************************************************
