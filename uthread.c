@@ -40,7 +40,7 @@ struct ucontext_t *t_context;
 
 int g_policy;
 struct tcb *running;
-
+struct tcb *m_thread;
 /***************************************************************************************
  * next_tcb()
  *
@@ -56,29 +56,25 @@ void next_tcb() {
 
     switch(g_policy)
     {
-        case 0: // FIFO
-            //printf("FIFO is here\n");
+        case 0 :
             next = fifo_scheduling(running);
             break;
-        case 1: //RR
-            printf("RR is here\n");
+        case 1 :
             next = rr_scheduling(running);
             break;
-        case 2: // prio
-            printf("PRIO is here\n");
+        case 2 : 
             next = prio_scheduling(running);
             break;
-        case 3: // sjf
-            //printf("SJF is here\n");
+        case 3 : 
             next = sjf_scheduling(running);
             break;
     }
     running = next;
-    fprintf(stderr, "SWAP %d -> %d\n",current->tid, running -> tid);
+    fprintf(stderr,"SWAP %d -> %d\n",current->tid, running -> tid);
     if (swapcontext(current->context, running->context)==-1)
         printf("swapcontext() error\n");
-    
-    
+    sigprocmask(SIG_BLOCK,&running->context->uc_sigmask,NULL);
+       
 }
 
 /***************************************************************************************
@@ -181,10 +177,10 @@ struct tcb *rr_scheduling(struct tcb *next) {
 struct tcb *prio_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
-
+    //printf("next tid : %d, state : %d\n",next->tid, next->state);
     struct tcb *temp;
-    int max_prio = -1;
-    int tid = -2;
+    int max_prio = MAIN_THREAD_PRIORITY;
+    int tid = MAIN_THREAD_TID;
     list_for_each_entry(temp, &tcbs, list)
     {
         if(temp->tid == next->tid)
@@ -198,10 +194,19 @@ struct tcb *prio_scheduling(struct tcb *next) {
             tid = temp->tid;
         }
     }
-    list_for_each_entry(temp, &tcbs, list)
+    //printf("choiced tid : %d , max_prio : %d\n",tid, max_prio);
+    if(tid == MAIN_THREAD_TID)
     {
+        struct tcb *main = list_first_entry(&tcbs, struct tcb, list);
+        main -> state =1;
+        return main;
+    }
+    list_for_each_entry(temp, &tcbs, list)
+    {   
+        //printf("temp tid : %d, lifetime : %d, state:%d\n",temp->tid, temp->lifetime, temp->state);
         if(temp->tid == tid)
         {
+            //printf("find choiced tid\n");
             temp->lifetime--;
             temp->state = 1; //running
             return temp;
@@ -287,6 +292,7 @@ void uthread_init(enum uthread_sched_policy policy) {
     list_add_tail(&main->list, &tcbs);
 
     running = main;
+    m_thread = main;
     t_context = running->context;
 
     /* DO NOT MODIFY THESE TWO LINES */
@@ -322,18 +328,22 @@ int uthread_create(void* stub(void *), void* args) {
     new -> context -> uc_stack.ss_sp = malloc(MAX_STACK_SIZE);
     new -> context -> uc_stack.ss_size = MAX_STACK_SIZE;
 
-    //printf("tid : %d ",new->tid);
+    switch(g_policy)
+    {
+        case 1 :
+        case 2 :
+            sigemptyset(&new -> context ->uc_sigmask);
+            sigaddset(&new -> context ->uc_sigmask,SIGINT);
+            sigaddset(&new -> context ->uc_sigmask,SIGQUIT);
+            break;
+        default :
+            sigfillset(&new -> context ->uc_sigmask);
+    }
+
     makecontext(new -> context, (void *) stub, 0);
        
     list_add_tail(&new->list, &tcbs);
     n_tcbs++;
-
-    /*struct tcb *temp;
-    list_for_each_entry(temp, &tcbs, list)
-    {
-        printf("%d -> ",temp->tid);
-    }
-    printf("\n");*/
 
     return new->tid; // tid return
 }
