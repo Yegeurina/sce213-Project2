@@ -57,7 +57,7 @@ void next_tcb() {
     switch(g_policy)
     {
         case 0: // FIFO
-            printf("FIFO is here\n");
+            //printf("FIFO is here\n");
             next = fifo_scheduling(running);
             break;
         case 1: //RR
@@ -69,7 +69,7 @@ void next_tcb() {
             next = prio_scheduling(running);
             break;
         case 3: // sjf
-            printf("SJF is here\n");
+            //printf("SJF is here\n");
             next = sjf_scheduling(running);
             break;
     }
@@ -147,6 +147,17 @@ struct tcb *rr_scheduling(struct tcb *next) {
             break;
         }
     }
+
+    struct tcb *is_last;
+    is_last = list_last_entry(&tcbs, struct tcb, list);
+    if(next->tid == is_last->tid)
+    {
+        //printf("is last entry\n");
+        struct tcb *main = list_first_entry(&tcbs, struct tcb, list);
+        main -> state =1;
+        return main;
+    }
+
     list_for_each_entry(temp,&tcbs,list)
     {
         if(temp->tid > next->tid)
@@ -210,7 +221,7 @@ struct tcb *prio_scheduling(struct tcb *next) {
 struct tcb *sjf_scheduling(struct tcb *next) {
 
     /* TODO: You have to implement this function. */
-    printf("next tid : %d next state : %d\n",next->tid, next->state);
+    //printf("next tid : %d next state : %d\n",next->tid, next->state);
     struct tcb *temp;
     int min_lifetime = MAIN_THREAD_LIFETIME;
     int tid = MAIN_THREAD_TID;
@@ -232,7 +243,7 @@ struct tcb *sjf_scheduling(struct tcb *next) {
         main -> state =1;
         return main;
     }
-    printf("min_lifetime tid : %d\n",tid);
+    //printf("min_lifetime tid : %d\n",tid);
     list_for_each_entry(temp, &tcbs, list)
     {
         if(temp->tid == tid)
@@ -255,7 +266,7 @@ void uthread_init(enum uthread_sched_policy policy) {
     
     /* TODO: You have to implement this function. */
     g_policy = policy; // store policy to golbal policy
-    printf("g_policy : %d\n",g_policy);
+    //printf("g_policy : %d\n",g_policy);
    
     struct tcb *main = malloc(sizeof(struct tcb));
     main -> context = malloc(sizeof(struct ucontext_t));
